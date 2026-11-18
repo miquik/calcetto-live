@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- Meta tag PWA per installazione su Home Screen (iOS / Android) -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Calcetto Live">
+    <meta name="theme-color" content="#0F172A">
+    
+    <title>Segnapunti Calcetto Live</title>
+
+    <!-- Google Fonts: Inter & Oswald per punteggi ad altissima leggibilità -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800;900&family=Oswald:wght@700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Lucide Icons via CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        html, body {
+            height: 100dvh;
+            width: 100vw;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation;
+        }
+
+        .score-font {
+            font-family: 'Oswald', sans-serif;
+            font-variant-numeric: tabular-nums;
+            line-height: 0.92;
+        }
+
+        /* Animazione pop al cambio punteggio */
+        @keyframes scorePop {
+            0% { transform: scale(1); }
+            45% { transform: scale(1.16); }
+            100% { transform: scale(1); }
+        }
+        .animate-pop {
+            animation: scorePop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        /* Effetto feedback visivo al tocco sulla zona */
+        .team-zone {
+            transition: filter 0.1s ease;
+        }
+        .team-zone:active {
+            filter: brightness(0.95);
+        }
+
+        /* Scrollbar discreta per modale storico */
+        .custom-scroll::-webkit-scrollbar {
+            width: 5px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.4);
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.35);
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-white">
+
+    <!-- CONTENITORE PRINCIPALE: verticale su portrait, affiancato su landscape o schermi larghi -->
+    <main id="app-container" class="relative w-full h-[100dvh] flex flex-col landscape:flex-row md:flex-row overflow-hidden">
+
+        <!-- ZONA SQUADRA 0 (Sinistra / Sopra) -->
+        <section id="zone-0"
+                 onclick="handleZoneTap(0, event)"
+                 role="button"
+                 tabindex="0"
+                 aria-label="Aggiungi gol prima squadra"
+                 class="team-zone relative flex-1 h-1/2 landscape:h-full md:h-full w-full landscape:w-1/2 md:w-1/2 flex flex-col items-center justify-between p-4 sm:p-6 cursor-pointer bg-[#FACC15] text-[#0F172A]">
+
+            <!-- Intestazione Squadra 0 con Rinomina Inline -->
+            <div class="z-10 mt-1 sm:mt-2 flex items-center justify-center max-w-[85%]" onclick="event.stopPropagation()">
+                <button type="button"
+                        id="name-btn-0"
+                        onclick="startInlineRename(0, event)"
+                        title="Tocca per rinominare"
+                        class="flex items-center gap-2 px-4 py-2 rounded-2xl bg-black/10 hover:bg-black/15 active:scale-95 transition-all">
+                    <span id="name-text-0" class="text-xl sm:text-3xl font-black tracking-tight truncate max-w-[220px] sm:max-w-[300px]">Gialli</span>
+                    <i data-lucide="pencil" class="w-4 h-4 sm:w-5 sm:h-5 opacity-75 shrink-0"></i>
+                </button>
+                <input type="text"
+                       id="name-input-0"
+                       maxlength="18"
+                       autocomplete="off"
+                       onkeydown="handleRenameKey(0, event)"
+                       onblur="finishInlineRename(0)"
+                       class="hidden px-4 py-1.5 rounded-2xl bg-white/95 text-slate-950 text-xl sm:text-3xl font-black text-center outline-none ring-4 ring-slate-950/30 w-52 sm:w-64 shadow-lg">
+            </div>
+
+            <!-- Punteggio Gigante Squadra 0 -->
+            <div class="flex-1 flex items-center justify-center pointer-events-none">
+                <span id="score-0" class="score-font font-bold select-none text-[26vw] sm:text-[22vw] landscape:text-[34vh] md:text-[32vh]">0</span>
+            </div>
+
+            <!-- Controlli inferiori Zona 0: Pulsante discreto -1 -->
+            <div class="w-full flex items-end justify-between z-10 pb-5 landscape:pb-1 md:pb-1">
+                <button type="button"
+                        onclick="decrementScore(0, event)"
+                        aria-label="Togli un gol"
+                        class="px-4 py-3 sm:px-5 sm:py-3.5 rounded-2xl bg-black/15 hover:bg-black/25 active:scale-90 font-extrabold text-base sm:text-lg flex items-center gap-1 shadow-sm transition-all">
+                    <i data-lucide="minus" class="w-4 h-4 stroke-[3]"></i>
+                    <span>1</span>
+                </button>
+                <span class="text-[11px] sm:text-xs font-bold uppercase tracking-widest opacity-55 pointer-events-none hidden sm:inline">
+                    Tap ovunque +1
+                </span>
+            </div>
+        </section>
+
+        <!-- BARRA CONTROLLI CENTRALE FLOTTANTE -->
+        <nav aria-label="Controlli partita"
+             class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 flex items-center gap-1 sm:gap-2 p-1.5 sm:p-2 rounded-full bg-slate-950/95 backdrop-blur-md border border-white/15 shadow-2xl max-w-[96vw]">
+
+            <!-- 1. Inverti lati -->
+            <button type="button"
+                    onclick="swapSides(event)"
+                    title="Inverti lati"
+                    aria-label="Inverti lati"
+                    class="p-2.5 sm:p-3 rounded-full text-slate-200 hover:text-white hover:bg-white/15 active:scale-90 transition-all">
+                <i data-lucide="arrow-left-right" class="w-5 h-5"></i>
+            </button>
+
+            <!-- 2. Azzera (Doppio tap conferma) -->
+            <button type="button"
+                    id="reset-btn"
+                    onclick="handleResetClick(event)"
+                    title="Azzera punteggio"
+                    aria-label="Azzera punteggio"
+                    class="flex items-center gap-1 px-2.5 py-2.5 sm:px-3 sm:py-3 rounded-full bg-red-600/90 hover:bg-red-500 text-white font-bold text-xs active:scale-95 transition-all">
+                <i data-lucide="rotate-ccw" class="w-4 h-4 sm:w-5 sm:h-5 shrink-0"></i>
+                <span id="reset-label" class="hidden pr-1 whitespace-nowrap">Conferma?</span>
+            </button>
+
+            <!-- 3. Fine Partita -->
+            <button type="button"
+                    onclick="openEndMatchModal(event)"
+                    title="Fine partita"
+                    aria-label="Fine partita"
+                    class="flex items-center gap-1.5 px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg active:scale-95 transition-all">
+                <i data-lucide="flag" class="w-4 h-4 sm:w-5 sm:h-5 shrink-0 stroke-[2.5]"></i>
+                <span>Fine</span>
+            </button>
+
+            <!-- 4. Storico Partite con Badge -->
+            <button type="button"
+                    onclick="openHistoryModal(event)"
+                    title="Storico partite"
+                    aria-label="Storico partite"
+                    class="relative p-2.5 sm:p-3 rounded-full text-slate-200 hover:text-white hover:bg-white/15 active:scale-90 transition-all">
+                <i data-lucide="trophy" class="w-5 h-5"></i>
+                <span id="history-badge"
+                      class="hidden absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center shadow">
+                    0
+                </span>
+            </button>
+
+            <!-- 5. Schermo Attivo (Screen Wake Lock) -->
+            <button type="button"
+                    id="wakelock-btn"
+                    onclick="toggleWakeLock(event)"
+                    title="Schermo sempre attivo"
+                    aria-label="Schermo sempre attivo"
+                    class="relative p-2.5 sm:p-3 rounded-full text-slate-400 hover:text-white hover:bg-white/15 active:scale-90 transition-all">
+                <i data-lucide="sun" class="w-5 h-5"></i>
+                <span id="wakelock-dot" class="hidden absolute bottom-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400"></span>
+            </button>
+        </nav>
+
+        <!-- ZONA SQUADRA 1 (Destra / Sotto) -->
+        <section id="zone-1"
+                 onclick="handleZoneTap(1, event)"
+                 role="button"
+                 tabindex="0"
+                 aria-label="Aggiungi gol seconda squadra"
+                 class="team-zone relative flex-1 h-1/2 landscape:h-full md:h-full w-full landscape:w-1/2 md:w-1/2 flex flex-col items-center justify-between p-4 sm:p-6 cursor-pointer bg-[#2563EB] text-[#FFFFFF]">
+
+            <!-- Intestazione Squadra 1 con Rinomina Inline -->
+            <div class="z-10 pt-5 landscape:pt-1 md:pt-1 mt-1 sm:mt-2 flex items-center justify-center max-w-[85%]" onclick="event.stopPropagation()">
+                <button type="button"
+                        id="name-btn-1"
+                        onclick="startInlineRename(1, event)"
+                        title="Tocca per rinominare"
+                        class="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all">
+                    <span id="name-text-1" class="text-xl sm:text-3xl font-black tracking-tight truncate max-w-[220px] sm:max-w-[300px]">Blu</span>
+                    <i data-lucide="pencil" class="w-4 h-4 sm:w-5 sm:h-5 opacity-80 shrink-0"></i>
+                </button>
+                <input type="text"
+                       id="name-input-1"
+                       maxlength="18"
+                       autocomplete="off"
+                       onkeydown="handleRenameKey(1, event)"
+                       onblur="finishInlineRename(1)"
+                       class="hidden px-4 py-1.5 rounded-2xl bg-white text-slate-950 text-xl sm:text-3xl font-black text-center outline-none ring-4 ring-white/40 w-52 sm:w-64 shadow-lg">
+            </div>
+
+            <!-- Punteggio Gigante Squadra 1 -->
+            <div class="flex-1 flex items-center justify-center pointer-events-none">
+                <span id="score-1" class="score-font font-bold select-none text-[26vw] sm:text-[22vw] landscape:text-[34vh] md:text-[32vh]">0</span>
+            </div>
+
+            <!-- Controlli inferiori Zona 1: Pulsante discreto -1 -->
+            <div class="w-full flex items-end justify-between z-10 pb-1">
+                <span class="text-[11px] sm:text-xs font-bold uppercase tracking-widest opacity-65 pointer-events-none hidden sm:inline">
+                    Tap ovunque +1
+                </span>
+                <button type="button"
+                        onclick="decrementScore(1, event)"
+                        aria-label="Togli un gol"
+                        class="ml-auto px-4 py-3 sm:px-5 sm:py-3.5 rounded-2xl bg-white/15 hover:bg-white/25 active:scale-90 font-extrabold text-base sm:text-lg flex items-center gap-1 shadow-sm transition-all">
+                    <i data-lucide="minus" class="w-4 h-4 stroke-[3]"></i>
+                    <span>1</span>
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- TOAST NOTIFICA RAPIDA -->
+    <div id="toast"
+         class="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-slate-900/95 border border-white/15 text-white text-xs sm:text-sm font-bold shadow-2xl opacity-0 pointer-events-none transition-opacity duration-200 whitespace-nowrap">
+    </div>
+
+    <!-- MODALE FINE PARTITA -->
+    <div id="end-modal"
+         onclick="if(event.target === this) closeEndMatchModal()"
+         class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+        <div class="w-full max-w-md bg-slate-900 border border-slate-700/80 rounded-3xl p-6 shadow-2xl text-white">
+            
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-xl font-black tracking-tight">Fine Partita</h2>
+                    <p id="end-modal-date" class="text-xs text-slate-400 font-medium mt-0.5"></p>
+                </div>
+                <button type="button"
+                        onclick="closeEndMatchModal()"
+                        aria-label="Chiudi modale"
+                        class="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Tabellino Riepilogo -->
+            <div class="bg-slate-800/90 border border-slate-700 rounded-2xl p-4 mb-5">
+                <div class="flex items-center justify-between gap-2 text-center">
+                    <div class="flex-1 min-w-0">
+                        <span id="summary-dot-0" class="inline-block w-3 h-3 rounded-full bg-[#FACC15] mb-1"></span>
+                        <div id="summary-name-0" class="font-extrabold text-base sm:text-lg truncate">Gialli</div>
+                    </div>
+                    <div class="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-slate-950/80">
+                        <span id="summary-score-0" class="score-font text-4xl font-bold text-[#FACC15]">0</span>
+                        <span class="text-slate-500 font-bold text-xl">-</span>
+                        <span id="summary-score-1" class="score-font text-4xl font-bold text-[#3B82F6]">0</span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <span id="summary-dot-1" class="inline-block w-3 h-3 rounded-full bg-[#2563EB] mb-1"></span>
+                        <div id="summary-name-1" class="font-extrabold text-base sm:text-lg truncate">Blu</div>
+                    </div>
+                </div>
+                <div id="summary-winner" class="mt-3 pt-2.5 border-t border-slate-700/80 text-center text-xs font-black uppercase tracking-wider text-emerald-400">
+                    Pareggio
+                </div>
+            </div>
+
+            <!-- Azioni Fine Partita -->
+            <div class="space-y-2.5">
+                <button type="button"
+                        onclick="shareCurrentOnWhatsApp()"
+                        class="w-full py-3.5 px-4 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
+                    <i data-lucide="share-2" class="w-5 h-5 stroke-[2.5]"></i>
+                    <span>Condividi su WhatsApp</span>
+                </button>
+
+                <button type="button"
+                        onclick="saveMatch(true)"
+                        class="w-full py-3.5 px-4 rounded-2xl bg-[#FACC15] hover:bg-amber-300 text-slate-950 font-black text-sm sm:text-base active:scale-[0.98] transition-all">
+                    Salva e Nuova Partita (0 - 0)
+                </button>
+
+                <div class="flex gap-2.5 pt-1">
+                    <button type="button"
+                            onclick="saveMatch(false)"
+                            class="flex-1 py-3 px-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs sm:text-sm active:scale-[0.98] transition-all">
+                        Solo Salva
+                    </button>
+                    <button type="button"
+                            onclick="closeEndMatchModal()"
+                            class="flex-1 py-3 px-3 rounded-2xl bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-white font-bold text-xs sm:text-sm active:scale-[0.98] transition-all">
+                        Chiudi
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALE STORICO PARTITE -->
+    <div id="history-modal"
+         onclick="if(event.target === this) closeHistoryModal()"
+         class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+        <div class="w-full max-w-lg max-h-[86dvh] flex flex-col bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl text-white overflow-hidden">
+            
+            <!-- Header Modale Storico -->
+            <div class="p-5 border-b border-slate-800 flex items-center justify-between shrink-0">
+                <div>
+                    <h2 class="text-xl font-black tracking-tight flex items-center gap-2">
+                        <span>Storico Partite</span>
+                        <span id="history-count-pill" class="px-2.5 py-0.5 text-xs rounded-full bg-slate-800 text-amber-400 font-extrabold">0</span>
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Partite salvate su questo dispositivo</p>
+                </div>
+                <button type="button"
+                        onclick="closeHistoryModal()"
+                        aria-label="Chiudi storico"
+                        class="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Lista Partite -->
+            <div id="history-list" class="flex-1 overflow-y-auto custom-scroll p-4 space-y-3">
+                <!-- Popolato da renderHistory() -->
+            </div>
+
+            <!-- Footer Storico: Svuota storico con doppio tap -->
+            <div id="history-footer" class="hidden p-4 border-t border-slate-800 bg-slate-950/60 shrink-0">
+                <button type="button"
+                        id="clear-history-btn"
+                        onclick="handleClearHistoryClick()"
+                        class="w-full py-3 rounded-2xl bg-red-500/15 hover:bg-red-500/25 text-red-400 font-extrabold text-sm transition-colors">
+                    Svuota storico
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chiavi localStorage
+        const STATE_KEY = 'calcetto_live_state_v2';
+        const HISTORY_KEY = 'calcetto_live_history_v2';
+
+        // Stato dell'applicazione
+        let appState = {
+            teams: [
+                { name: 'Gialli', score: 0, color: 'yellow' },
+                { name: 'Blu', score: 0, color: 'blue' }
+            ]
+        };
+
+        let historyList = [];
+
+        // Variabili gestione conferme e Wake Lock
+        let resetArmed = false;
+        let resetTimer = null;
+        let clearHistoryArmed = false;
+        let clearHistoryTimer = null;
+        let wakeLockSentinel = null;
+        let wakeLockEnabled = false;
+        let toastTimer = null;
+        let activeInlineEdit = null;
+
+        /**
+         * Carica stato e storico da localStorage
+         */
+        function loadFromStorage() {
+            try {
+                const rawState = localStorage.getItem(STATE_KEY);
+                if (rawState) {
+                    const parsed = JSON.parse(rawState);
+                    if (parsed && Array.isArray(parsed.teams) && parsed.teams.length === 2) {
+                        appState = parsed;
+                    }
+                }
+                const rawHistory = localStorage.getItem(HISTORY_KEY);
+                if (rawHistory) {
+                    const parsedHist = JSON.parse(rawHistory);
+                    if (Array.isArray(parsedHist)) {
+                        historyList = parsedHist;
+                    }
+                }
+            } catch (e) {
+                console.warn('Errore lettura localStorage:', e);
+            }
+        }
+
+        /**
+         * Salva stato corrente in localStorage
+         */
+        function persistState() {
+            try {
+                localStorage.setItem(STATE_KEY, JSON.stringify(appState));
+            } catch (e) {
+                console.warn('Errore salvataggio stato:', e);
+            }
+        }
+
+        /**
+         * Salva storico partite in localStorage
+         */
+        function persistHistory() {
+            try {
+                localStorage.setItem(HISTORY_KEY, JSON.stringify(historyList));
+            } catch (e) {
+                console.warn('Errore salvataggio storico:', e);
+            }
+            updateHistoryBadge();
+        }
+
+        /**
+         * Aggiorna l'interfaccia delle due zone squadra
+         */
+        function renderBoard() {
+            appState.teams.forEach((team, idx) => {
+                const zone = document.getElementById(`zone-${idx}`);
+                const nameText = document.getElementById(`name-text-${idx}`);
+                const nameBtn = document.getElementById(`name-btn-${idx}`);
+                const scoreEl = document.getElementById(`score-${idx}`);
+
+                nameText.textContent = team.name;
+                scoreEl.textContent = team.score;
+
+                if (team.color === 'yellow') {
+                    zone.className = 'team-zone relative flex-1 h-1/2 landscape:h-full md:h-full w-full landscape:w-1/2 md:w-1/2 flex flex-col items-center justify-between p-4 sm:p-6 cursor-pointer bg-[#FACC15] text-[#0F172A]';
+                    nameBtn.className = 'flex items-center gap-2 px-4 py-2 rounded-2xl bg-black/10 hover:bg-black/15 active:scale-95 transition-all';
+                } else {
+                    zone.className = 'team-zone relative flex-1 h-1/2 landscape:h-full md:h-full w-full landscape:w-1/2 md:w-1/2 flex flex-col items-center justify-between p-4 sm:p-6 cursor-pointer bg-[#2563EB] text-[#FFFFFF]';
+                    nameBtn.className = 'flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all';
+                }
+            });
+            updateHistoryBadge();
+        }
+
+        /**
+         * Aggiorna il badge numerico sul pulsante Storico
+         */
+        function updateHistoryBadge() {
+            const badge = document.getElementById('history-badge');
+            if (historyList.length > 0) {
+                badge.textContent = historyList.length > 99 ? '99+' : historyList.length;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Anima il numero dei gol con effetto pop
+         */
+        function triggerScorePop(idx) {
+            const el = document.getElementById(`score-${idx}`);
+            el.classList.remove('animate-pop');
+            void el.offsetWidth; // Force reflow
+            el.classList.add('animate-pop');
+        }
+
+        /**
+         * Tap sull'area squadra -> +1 gol
+         */
+        function handleZoneTap(idx, event) {
+            // Se si sta rinominando inline, chiude solo la modifica senza segnare gol
+            if (activeInlineEdit !== null) {
+                finishInlineRename(activeInlineEdit);
+                return;
+            }
+            appState.teams[idx].score += 1;
+            persistState();
+            renderBoard();
+            triggerScorePop(idx);
+
+            if (navigator.vibrate) {
+                try { navigator.vibrate(30); } catch (e) {}
+            }
+        }
+
+        /**
+         * Pulsante -1 -> decrementa gol (minimo 0)
+         */
+        function decrementScore(idx, event) {
+            event.stopPropagation();
+            if (appState.teams[idx].score > 0) {
+                appState.teams[idx].score -= 1;
+                persistState();
+                renderBoard();
+                triggerScorePop(idx);
+
+                if (navigator.vibrate) {
+                    try { navigator.vibrate(18); } catch (e) {}
+                }
+            }
+        }
+
+        /**
+         * Rinomina squadra inline al tocco
+         */
+        function startInlineRename(idx, event) {
+            event.stopPropagation();
+            if (activeInlineEdit !== null && activeInlineEdit !== idx) {
+                finishInlineRename(activeInlineEdit);
+            }
+            activeInlineEdit = idx;
+
+            const btn = document.getElementById(`name-btn-${idx}`);
+            const input = document.getElementById(`name-input-${idx}`);
+
+            btn.classList.add('hidden');
+            input.classList.remove('hidden');
+            input.value = appState.teams[idx].name;
+            input.focus();
+            input.select();
+        }
+
+        function handleRenameKey(idx, event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                finishInlineRename(idx);
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                cancelInlineRename(idx);
+            }
+        }
+
+        function finishInlineRename(idx) {
+            if (activeInlineEdit !== idx) return;
+            const btn = document.getElementById(`name-btn-${idx}`);
+            const input = document.getElementById(`name-input-${idx}`);
+            const cleaned = input.value.trim();
+
+            if (cleaned.length > 0) {
+                appState.teams[idx].name = cleaned;
+                persistState();
+            }
+
+            input.classList.add('hidden');
+            btn.classList.remove('hidden');
+            activeInlineEdit = null;
+            renderBoard();
+        }
+
+        function cancelInlineRename(idx) {
+            const btn = document.getElementById(`name-btn-${idx}`);
+            const input = document.getElementById(`name-input-${idx}`);
+            input.classList.add('hidden');
+            btn.classList.remove('hidden');
+            activeInlineEdit = null;
+        }
+
+        /**
+         * Scambia posizione visiva delle due squadre (Inverti lati)
+         */
+        function swapSides(event) {
+            event.stopPropagation();
+            if (activeInlineEdit !== null) {
+                finishInlineRename(activeInlineEdit);
+            }
+            const temp = appState.teams[0];
+            appState.teams[0] = appState.teams[1];
+            appState.teams[1] = temp;
+            persistState();
+            renderBoard();
+            showToast('Lati invertiti');
+        }
+
+        /**
+         * Azzera punteggio con conferma a doppio tap ('Conferma?')
+         */
+        function handleResetClick(event) {
+            event.stopPropagation();
+            const label = document.getElementById('reset-label');
+
+            if (!resetArmed) {
+                resetArmed = true;
+                label.classList.remove('hidden');
+                resetTimer = setTimeout(() => {
+                    resetArmed = false;
+                    label.classList.add('hidden');
+                }, 3000);
+            } else {
+                clearTimeout(resetTimer);
+                resetArmed = false;
+                label.classList.add('hidden');
+
+                appState.teams[0].score = 0;
+                appState.teams[1].score = 0;
+                persistState();
+                renderBoard();
+                showToast('Punteggio azzerato (0 - 0)');
+
+                if (navigator.vibrate) {
+                    try { navigator.vibrate([30, 40, 30]); } catch (e) {}
+                }
+            }
+        }
+
+        /**
+         * Formatta data e ora corrente in italiano
+         */
+        function getFormattedDate() {
+            return new Date().toLocaleDateString('it-IT', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        /**
+         * Condivisione su WhatsApp tramite https://wa.me/?text=...
+         */
+        function openWhatsAppShare(teamA, teamB, dateStr) {
+            const dotA = teamA.color === 'yellow' ? '🟡' : '🔵';
+            const dotB = teamB.color === 'yellow' ? '🟡' : '🔵';
+
+            let resultText = '🤝 Pareggio!';
+            if (teamA.score > teamB.score) {
+                resultText = `🏆 Vince *${teamA.name}*!`;
+            } else if (teamB.score > teamA.score) {
+                resultText = `🏆 Vince *${teamB.name}*!`;
+            }
+
+            const text =
+`⚽ *RISULTATO CALCETTO* ⚽
+📅 ${dateStr}
+
+${dotA} *${teamA.name}*: *${teamA.score}*
+${dotB} *${teamB.name}*: *${teamB.score}*
+
+${resultText}`;
+
+            const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+
+        /**
+         * Modale Fine Partita
+         */
+        function openEndMatchModal(event) {
+            event.stopPropagation();
+            if (activeInlineEdit !== null) {
+                finishInlineRename(activeInlineEdit);
+            }
+
+            const t0 = appState.teams[0];
+            const t1 = appState.teams[1];
+
+            document.getElementById('end-modal-date').textContent = getFormattedDate();
+            document.getElementById('summary-name-0').textContent = t0.name;
+            document.getElementById('summary-name-1').textContent = t1.name;
+            document.getElementById('summary-score-0').textContent = t0.score;
+            document.getElementById('summary-score-1').textContent = t1.score;
+
+            document.getElementById('summary-dot-0').className = `inline-block w-3 h-3 rounded-full mb-1 ${t0.color === 'yellow' ? 'bg-[#FACC15]' : 'bg-[#2563EB]'}`;
+            document.getElementById('summary-dot-1').className = `inline-block w-3 h-3 rounded-full mb-1 ${t1.color === 'yellow' ? 'bg-[#FACC15]' : 'bg-[#2563EB]'}`;
+            document.getElementById('summary-score-0').className = `score-font text-4xl font-bold ${t0.color === 'yellow' ? 'text-[#FACC15]' : 'text-[#3B82F6]'}`;
+            document.getElementById('summary-score-1').className = `score-font text-4xl font-bold ${t1.color === 'yellow' ? 'text-[#FACC15]' : 'text-[#3B82F6]'}`;
+
+            const winnerEl = document.getElementById('summary-winner');
+            if (t0.score > t1.score) {
+                winnerEl.textContent = `🏆 Vince ${t0.name}`;
+                winnerEl.className = 'mt-3 pt-2.5 border-t border-slate-700/80 text-center text-xs font-black uppercase tracking-wider text-emerald-400';
+            } else if (t1.score > t0.score) {
+                winnerEl.textContent = `🏆 Vince ${t1.name}`;
+                winnerEl.className = 'mt-3 pt-2.5 border-t border-slate-700/80 text-center text-xs font-black uppercase tracking-wider text-emerald-400';
+            } else {
+                winnerEl.textContent = '🤝 Pareggio';
+                winnerEl.className = 'mt-3 pt-2.5 border-t border-slate-700/80 text-center text-xs font-black uppercase tracking-wider text-slate-300';
+            }
+
+            const modal = document.getElementById('end-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeEndMatchModal() {
+            const modal = document.getElementById('end-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function shareCurrentOnWhatsApp() {
+            openWhatsAppShare(appState.teams[0], appState.teams[1], getFormattedDate());
+        }
+
+        /**
+         * Salva la partita nello storico e opzionalmente azzera a 0-0
+         */
+        function saveMatch(resetAfterSave) {
+            const matchRecord = {
+                id: Date.now(),
+                date: getFormattedDate(),
+                teamA: { ...appState.teams[0] },
+                teamB: { ...appState.teams[1] }
+            };
+
+            historyList.unshift(matchRecord);
+            persistHistory();
+
+            if (resetAfterSave) {
+                appState.teams[0].score = 0;
+                appState.teams[1].score = 0;
+                persistState();
+                renderBoard();
+                showToast('Partita salvata! Nuovo match 0 - 0');
+            } else {
+                showToast('Partita salvata nello storico');
+            }
+
+            if (navigator.vibrate) {
+                try { navigator.vibrate([25, 35, 25]); } catch (e) {}
+            }
+
+            closeEndMatchModal();
+        }
+
+        /**
+         * Modale Storico Partite
+         */
+        function openHistoryModal(event) {
+            event.stopPropagation();
+            resetClearHistoryButton();
+            renderHistory();
+
+            const modal = document.getElementById('history-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeHistoryModal() {
+            resetClearHistoryButton();
+            const modal = document.getElementById('history-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('history-list');
+            const countPill = document.getElementById('history-count-pill');
+            const footer = document.getElementById('history-footer');
+
+            countPill.textContent = historyList.length;
+
+            if (historyList.length === 0) {
+                footer.classList.add('hidden');
+                container.innerHTML = `
+                    <div class="py-12 px-4 text-center text-slate-400">
+                        <p class="text-base font-extrabold text-slate-200">Nessuna partita nello storico</p>
+                        <p class="text-xs mt-1.5">Premi <span class="text-emerald-400 font-bold">Fine</span> nella barra centrale per salvare i risultati delle tue partite.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            footer.classList.remove('hidden');
+            container.innerHTML = historyList.map(item => {
+                const aWon = item.teamA.score > item.teamB.score;
+                const bWon = item.teamB.score > item.teamA.score;
+
+                const dotA = item.teamA.color === 'yellow' ? 'bg-[#FACC15]' : 'bg-[#2563EB]';
+                const dotB = item.teamB.color === 'yellow' ? 'bg-[#FACC15]' : 'bg-[#2563EB]';
+
+                let badgeHtml = `<span class="px-2 py-0.5 rounded-md bg-slate-700/80 text-slate-300 text-[10px] font-bold">Pareggio</span>`;
+                if (aWon) {
+                    badgeHtml = `<span class="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold">🏆 ${escapeHtml(item.teamA.name)}</span>`;
+                } else if (bWon) {
+                    badgeHtml = `<span class="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold">🏆 ${escapeHtml(item.teamB.name)}</span>`;
+                }
+
+                return `
+                    <article class="bg-slate-800/85 border border-slate-700/70 rounded-2xl p-3.5 flex flex-col gap-2.5">
+                        <div class="flex items-center justify-between gap-2 text-[11px] text-slate-400 font-semibold">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span>${escapeHtml(item.date)}</span>
+                                ${badgeHtml}
+                            </div>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <button type="button"
+                                        onclick="shareHistoryMatch(${item.id})"
+                                        class="px-2.5 py-1 rounded-lg bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] font-bold transition-colors">
+                                    WhatsApp
+                                </button>
+                                <button type="button"
+                                        onclick="deleteHistoryMatch(${item.id})"
+                                        aria-label="Elimina partita"
+                                        class="p-1.5 rounded-lg bg-slate-700/60 hover:bg-red-500/25 text-slate-400 hover:text-red-400 transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 flex-1 min-w-0">
+                                <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dotA}"></span>
+                                <span class="truncate text-sm sm:text-base ${aWon ? 'font-black text-white' : 'font-semibold text-slate-300'}">
+                                    ${escapeHtml(item.teamA.name)}
+                                </span>
+                            </div>
+
+                            <div class="px-3 py-1 rounded-xl bg-slate-950/80 font-extrabold text-lg sm:text-xl score-font shrink-0">
+                                <span class="${aWon ? 'text-emerald-400' : 'text-white'}">${item.teamA.score}</span>
+                                <span class="text-slate-500 mx-1">-</span>
+                                <span class="${bWon ? 'text-emerald-400' : 'text-white'}">${item.teamB.score}</span>
+                            </div>
+
+                            <div class="flex items-center justify-end gap-2 flex-1 min-w-0 text-right">
+                                <span class="truncate text-sm sm:text-base ${bWon ? 'font-black text-white' : 'font-semibold text-slate-300'}">
+                                    ${escapeHtml(item.teamB.name)}
+                                </span>
+                                <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dotB}"></span>
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+        }
+
+        function shareHistoryMatch(id) {
+            const match = historyList.find(m => m.id === id);
+            if (match) {
+                openWhatsAppShare(match.teamA, match.teamB, match.date);
+            }
+        }
+
+        function deleteHistoryMatch(id) {
+            historyList = historyList.filter(m => m.id !== id);
+            persistHistory();
+            renderHistory();
+            showToast('Partita eliminata');
+        }
+
+        function handleClearHistoryClick() {
+            const btn = document.getElementById('clear-history-btn');
+            if (!clearHistoryArmed) {
+                clearHistoryArmed = true;
+                btn.textContent = 'Conferma?';
+                btn.className = 'w-full py-3 rounded-2xl bg-red-600 text-white font-extrabold text-sm transition-colors';
+                clearHistoryTimer = setTimeout(resetClearHistoryButton, 3000);
+            } else {
+                clearTimeout(clearHistoryTimer);
+                resetClearHistoryButton();
+                historyList = [];
+                persistHistory();
+                renderHistory();
+                showToast('Storico svuotato');
+            }
+        }
+
+        function resetClearHistoryButton() {
+            clearHistoryArmed = false;
+            const btn = document.getElementById('clear-history-btn');
+            if (btn) {
+                btn.textContent = 'Svuota storico';
+                btn.className = 'w-full py-3 rounded-2xl bg-red-500/15 hover:bg-red-500/25 text-red-400 font-extrabold text-sm transition-colors';
+            }
+        }
+
+        /**
+         * Screen Wake Lock API (Schermo sempre attivo)
+         */
+        async function toggleWakeLock(event) {
+            event.stopPropagation();
+            if (!('wakeLock' in navigator)) {
+                showToast('Schermo attivo non supportato su questo browser');
+                return;
+            }
+
+            if (!wakeLockEnabled) {
+                try {
+                    wakeLockSentinel = await navigator.wakeLock.request('screen');
+                    wakeLockEnabled = true;
+                    updateWakeLockUI(true);
+                    showToast('Schermo sempre attivo: ON');
+
+                    wakeLockSentinel.addEventListener('release', () => {
+                        if (!wakeLockEnabled) updateWakeLockUI(false);
+                    });
+                } catch (err) {
+                    showToast('Impossibile bloccare lo spegnimento schermo');
+                }
+            } else {
+                wakeLockEnabled = false;
+                if (wakeLockSentinel) {
+                    try { await wakeLockSentinel.release(); } catch (e) {}
+                    wakeLockSentinel = null;
+                }
+                updateWakeLockUI(false);
+                showToast('Schermo sempre attivo: OFF');
+            }
+        }
+
+        function updateWakeLockUI(isActive) {
+            const btn = document.getElementById('wakelock-btn');
+            const dot = document.getElementById('wakelock-dot');
+            if (isActive) {
+                btn.classList.remove('text-slate-400');
+                btn.classList.add('text-amber-400', 'bg-amber-400/15');
+                dot.classList.remove('hidden');
+            } else {
+                btn.classList.add('text-slate-400');
+                btn.classList.remove('text-amber-400', 'bg-amber-400/15');
+                dot.classList.add('hidden');
+            }
+        }
+
+        // Riattiva Wake Lock se l'utente torna sulla scheda
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLockEnabled && document.visibilityState === 'visible' && 'wakeLock' in navigator) {
+                try {
+                    wakeLockSentinel = await navigator.wakeLock.request('screen');
+                    updateWakeLockUI(true);
+                } catch (e) {}
+            }
+        });
+
+        /**
+         * Mostra messaggio toast temporaneo
+         */
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.remove('opacity-0');
+            toast.classList.add('opacity-100');
+
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0');
+            }, 2200);
+        }
+
+        // Chiusura modali con tasto ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeEndMatchModal();
+                closeHistoryModal();
+            }
+        });
+
+        // Inizializzazione all'avvio
+        window.addEventListener('DOMContentLoaded', () => {
+            loadFromStorage();
+            renderBoard();
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons();
+            }
+        });
+    </script>
+</body>
+</html>
